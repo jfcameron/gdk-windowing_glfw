@@ -14,7 +14,8 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "GDKWINDOWING_GLFW_BUILD_TESTS": "ON",
-        "GDKWINDOWING_GLFW_BUILD_DOCS": "OFF"
+        "GDKWINDOWING_GLFW_BUILD_DOCS": "OFF",
+        "GDKWINDOWING_GLFW_BUILD_DEMO": "ON"
       }
     },
     {
@@ -91,7 +92,25 @@
       "inherits": "linux-gcc",
       "cacheVariables": {
         "GDKWINDOWING_GLFW_BUILD_TESTS": "OFF",
-        "GDKWINDOWING_GLFW_BUILD_DOCS": "ON"
+        "GDKWINDOWING_GLFW_BUILD_DOCS": "ON",
+        "GDKWINDOWING_GLFW_BUILD_DEMO": "OFF"
+      }
+    },
+    {
+      "name": "freebsd-clang",
+      "displayName": "FreeBSD / clang",
+      "inherits": "base",
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "FreeBSD"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_FLAGS": "-Wall -Wextra",
+        "CMAKE_C_COMPILER": "clang",
+        "GLFW_BUILD_WAYLAND": "OFF"
       }
     },
     {
@@ -185,16 +204,7 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_CXX_FLAGS": "-fexceptions -Wall -Wextra",
-        "CMAKE_EXE_LINKER_FLAGS": "-fexceptions",
-        "GDKWINDOWING_GLFW_BUILD_DEMO": "ON"
-      }
-    },
-    {
-      "name": "linux-gcc-demo",
-      "inherits": "linux-gcc",
-      "description": "the demo window",
-      "cacheVariables": {
-        "GDKWINDOWING_GLFW_BUILD_DEMO": "ON"
+        "CMAKE_EXE_LINKER_FLAGS": "-fexceptions"
       }
     }
   ],
@@ -222,6 +232,10 @@
     {
       "name": "linux-docs",
       "configurePreset": "linux-docs"
+    },
+    {
+      "name": "freebsd-clang",
+      "configurePreset": "freebsd-clang"
     },
     {
       "name": "macos-clang",
@@ -263,10 +277,6 @@
     {
       "name": "emscripten",
       "configurePreset": "emscripten"
-    },
-    {
-      "name": "linux-gcc-demo",
-      "configurePreset": "linux-gcc-demo"
     }
   ],
   "testPresets": [
@@ -306,6 +316,13 @@
       },
       "environment": {
         "ASAN_OPTIONS": "detect_leaks=0"
+      }
+    },
+    {
+      "name": "freebsd-clang",
+      "configurePreset": "freebsd-clang",
+      "output": {
+        "outputOnFailure": true
       }
     },
     {

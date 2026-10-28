@@ -10,19 +10,19 @@ Install cmake 3.21 or greater, and a c++20 compatible compiler. On Linux, GLFW n
 git submodule update --init --recursive
 
 # generate the script to build the library, its tests and the demo on linux using gcc
-cmake --preset linux-gcc-demo
+cmake --preset linux-gcc
 
 # build them
-cmake --build --preset linux-gcc-demo
+cmake --build --preset linux-gcc
 
 # run the tests: they open windows, so they need a display
 ctest --preset linux-gcc
 ```
-Without a display, run them under Xvfb: `xvfb-run -a -s "-noreset" ctest --preset linux-gcc`. `-noreset` matters: each time the last window goes, GLFW closes its X connection, and an Xvfb that resets on its last client refuses the next one.
+CI runs them on Linux (X11 and Wayland), FreeBSD (X11) and Windows x64 and x86, the last over Mesa's software OpenGL, which has no arm64 build. Hosted macOS runners have no GPU and GLFW asks macOS for an accelerated pixel format, so the macOS jobs only build. Without a display, run them under Xvfb: `xvfb-run -a -s "-noreset" ctest --preset linux-gcc`. `-noreset` matters: each time the last window goes, GLFW closes its X connection, and an Xvfb that resets on its last client refuses the next one.
 
 See `CMakePresets.json` for the full list of supported platforms and compilers. See `.github/workflows/ci.yml` to see how CI runners build it on different platforms.
 
-To use it from another project, add it with `add_subdirectory` and link `gdk::windowing_glfw`. It brings gdk-windowing and GLFW with it, unless the project already has them.
+To use it from another project, add it with `add_subdirectory` and link `gdk::windowing_glfw`. It brings gdk-windowing and GLFW with it, unless the project already has them. Or install it (`cmake --install`, which installs gdk-windowing and GLFW beside it) and use `find_package(gdk-windowing_glfw)`.
 
 ## Usage
 ```cpp

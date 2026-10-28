@@ -16,6 +16,13 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jfc-cmake/jfclib.cmake")
 option(GDKWINDOWING_GLFW_BUILD_TESTS "Build unit tests; they need a display" ${PROJECT_IS_TOP_LEVEL})
 option(GDKWINDOWING_GLFW_BUILD_DEMO "Build the demo" OFF)
 option(GDKWINDOWING_GLFW_BUILD_DOCS "Build documentation" OFF)
+option(GDKWINDOWING_GLFW_INSTALL "Generate install rules, GLFW's included" ${PROJECT_IS_TOP_LEVEL})
+
+if (GDKWINDOWING_GLFW_BUILD_DOCS AND NOT GDKWINDOWING_GLFW_BUILD_TESTS AND NOT GDKWINDOWING_GLFW_BUILD_DEMO)
+    add_subdirectory(docs)
+
+    return()
+endif()
 
 add_subdirectory(extern)
 
@@ -42,6 +49,9 @@ else()
     endforeach()
 endif()
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 add_library(gdkwindowing_glfw STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw_context.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw_session.cpp"
@@ -57,12 +67,55 @@ set_target_properties(gdkwindowing_glfw PROPERTIES EXPORT_NAME windowing_glfw PR
 target_include_directories(gdkwindowing_glfw
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/include")
 
 target_compile_features(gdkwindowing_glfw PUBLIC cxx_std_20)
 
-target_link_libraries(gdkwindowing_glfw PUBLIC gdkwindowing glfw)
+target_link_libraries(gdkwindowing_glfw PUBLIC gdkwindowing)
+
+if (EMSCRIPTEN)
+    target_link_options(gdkwindowing_glfw PUBLIC "-sUSE_GLFW=3")
+else()
+    target_link_libraries(gdkwindowing_glfw PUBLIC glfw)
+endif()
+
+if (GDKWINDOWING_GLFW_INSTALL)
+    install(TARGETS gdkwindowing_glfw
+        EXPORT gdk-windowing_glfw-targets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+    install(EXPORT gdk-windowing_glfw-targets
+        FILE gdk-windowing_glfw-targets.cmake
+        NAMESPACE gdk::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/gdk-windowing_glfw")
+
+    write_basic_package_version_file(
+        "${PROJECT_BINARY_DIR}/gdk-windowing_glfw-config-version.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+
+    set(_gdkwindowing_glfw_find_glfw "find_dependency(glfw3)\n")
+
+    if (EMSCRIPTEN)
+        set(_gdkwindowing_glfw_find_glfw "")
+    endif()
+
+    file(WRITE "${PROJECT_BINARY_DIR}/gdk-windowing_glfw-config.cmake"
+"include(CMakeFindDependencyMacro)
+find_dependency(gdk-windowing 1)
+${_gdkwindowing_glfw_find_glfw}include(\"\${CMAKE_CURRENT_LIST_DIR}/gdk-windowing_glfw-targets.cmake\")
+")
+
+    install(FILES
+        "${PROJECT_BINARY_DIR}/gdk-windowing_glfw-config.cmake"
+        "${PROJECT_BINARY_DIR}/gdk-windowing_glfw-config-version.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/gdk-windowing_glfw")
+endif()
 
 if (GDKWINDOWING_GLFW_BUILD_TESTS)
     add_subdirectory(test)
