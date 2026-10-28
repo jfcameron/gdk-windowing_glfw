@@ -7,6 +7,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,7 +43,7 @@ jobs:
           - { name: clang arm64,    runner: ubuntu-24.04-arm, preset: linux-clang }
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -66,8 +68,101 @@ jobs:
       - name: test
         run: xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" ctest --preset ${{ matrix.preset }}
 
+  linux-wayland:
+    name: linux gcc wayland (weston, headless)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: install
+        run: sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build weston libegl1 libegl-mesa0 libwayland-egl1 libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxkbcommon-dev libwayland-dev wayland-protocols libgl1-mesa-dev libgl1-mesa-dri
+
+      - name: configure
+        run: cmake --preset linux-gcc
+
+      - name: build
+        run: cmake --build --preset linux-gcc
+
+      - name: test
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless --renderer=pixman --socket=wayland-gdk --idle-time=0 > weston.log 2>&1 &
+          for _ in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wayland-gdk" ] && break; sleep 0.2; done
+          env -u DISPLAY WAYLAND_DISPLAY=wayland-gdk XDG_SESSION_TYPE=wayland LIBGL_ALWAYS_SOFTWARE=1 ctest --preset linux-gcc || { cat weston.log; exit 1; }
+
+  interface-latest:
+    name: linux gcc, against the interface's latest commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: take the interface's latest commit
+        run: |
+          git -C extern/gdk-windowing fetch origin HEAD
+          git -C extern/gdk-windowing checkout --detach FETCH_HEAD
+          git -C extern/gdk-windowing submodule update --init --recursive
+          git -C extern/gdk-windowing log -1 --oneline
+
+      - name: install
+        run: sudo apt-get update && sudo apt-get install -y ninja-build xvfb libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxkbcommon-dev libwayland-dev wayland-protocols libgl1-mesa-dev libgl1-mesa-dri
+
+      - name: configure
+        run: cmake --preset linux-gcc
+
+      - name: build
+        run: cmake --build --preset linux-gcc
+
+      - name: test
+        run: xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" ctest --preset linux-gcc
+
+  linux-containers:
+    name: linux ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc latest
+            image: 'gcc:latest'
+            install: >-
+              apt-get update && apt-get install -y git cmake ninja-build xvfb xauth
+              libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxkbcommon-dev libwayland-dev wayland-protocols libgl1-mesa-dev libgl1-mesa-dri
+          - name: musl alpine
+            image: 'alpine:latest'
+            install: >-
+              apk add --no-cache git g++ cmake samurai xvfb-run xvfb xauth xkbcomp xkeyboard-config mesa-gl mesa-dri-gallium
+              libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxkbcommon-dev wayland-dev wayland-protocols
+
+    steps:
+      - name: install
+        run: ${{ matrix.install }}
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: configure
+        run: cmake --preset linux-gcc
+
+      - name: build
+        run: cmake --build --preset linux-gcc
+
+      - name: test
+        run: xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" ctest --preset linux-gcc
+
   macos:
-    name: macos ${{ matrix.name }}
+    name: macos ${{ matrix.name }} (build only, the runner has no OpenGL)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -80,7 +175,7 @@ jobs:
           - { name: gcc arm64,          runner: macos-15, gcc: true }
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -96,9 +191,6 @@ jobs:
       - name: build
         run: cmake --build --preset macos-clang
 
-      - name: test
-        run: ctest --preset macos-clang
-
   windows:
     name: windows ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
@@ -111,13 +203,17 @@ jobs:
           - { name: msvc x64,                   runner: windows-2025,  preset: windows-msvc }
           - { name: msvc warnings are errors,   runner: windows-2025,  preset: windows-msvc-ci }
           - { name: msvc x86,                   runner: windows-2025,  preset: windows-msvc-x86 }
-          - { name: msvc arm64,                 runner: windows-11-arm, preset: windows-msvc-arm64 }
+          - { name: msvc arm64 (build only, mesa has no arm64 build), runner: windows-11-arm, preset: windows-msvc-arm64, build-only: true }
           - { name: clang-cl x64,               runner: windows-2025,  preset: windows-clang-cl }
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      - name: install mesa's software opengl
+        if: ${{ !matrix.build-only }}
+        uses: ssciwr/setup-mesa-dist-win@v3
 
       - name: configure
         run: cmake --preset ${{ matrix.preset }}
@@ -126,6 +222,7 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
 
       - name: test
+        if: ${{ !matrix.build-only }}
         run: ctest --preset ${{ matrix.preset }}
 
   mingw:
@@ -139,8 +236,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: gcc x64,   msystem: UCRT64,  cxx: g++ }
-          - { name: clang x64, msystem: CLANG64, cxx: clang++ }
+          - { name: gcc x64,   msystem: UCRT64,  cc: gcc,   cxx: g++ }
+          - { name: clang x64, msystem: CLANG64, cc: clang, cxx: clang++ }
 
     steps:
       - uses: msys2/setup-msys2@v2
@@ -148,12 +245,15 @@ jobs:
           msystem: ${{ matrix.msystem }}
           pacboy: toolchain:p cmake:p ninja:p
 
-      - uses: actions/checkout@v5
+      - name: install mesa's software opengl
+        uses: ssciwr/setup-mesa-dist-win@v3
+
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: configure
-        run: cmake --preset windows-mingw -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+        run: cmake --preset windows-mingw -DCMAKE_C_COMPILER=${{ matrix.cc }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
 
       - name: build
         run: cmake --build --preset windows-mingw
@@ -167,14 +267,14 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: install ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: emscripten-core/setup-emsdk@v16
         with:
           version: latest
 
@@ -183,6 +283,32 @@ jobs:
 
       - name: build
         run: cmake --build --preset emscripten
+
+  freebsd:
+    name: freebsd clang (x11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          prepare: >-
+            pkg install -y cmake ninja libX11 libXcursor libXi libXinerama libXrandr libxkbcommon
+            mesa-libs mesa-dri xorg-vfbserver xkbcomp xkeyboard-config
+          run: |
+            cmake --preset freebsd-clang
+            cmake --build --preset freebsd-clang
+            Xvfb :99 -screen 0 1280x1024x24 -noreset > /dev/null 2>&1 < /dev/null &
+            xvfb=$!
+            sleep 3
+            result=0
+            DISPLAY=:99 ctest --preset freebsd-clang || result=$?
+            kill $xvfb
+            exit $result
 
   standards:
     name: headers standalone (${{ matrix.compiler }}, ${{ matrix.std }})
@@ -195,7 +321,7 @@ jobs:
         std: [c++20, c++23, c++2c]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -213,7 +339,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -225,7 +351,7 @@ jobs:
 
       - name: upload for github pages
         if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: out/build/linux-docs/docs
 
@@ -246,4 +372,4 @@ jobs:
 
     steps:
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
