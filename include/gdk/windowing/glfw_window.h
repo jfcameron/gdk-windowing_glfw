@@ -38,6 +38,8 @@ namespace gdk::windowing {
         virtual void set_cursor(const cursor_image_type &aRGBA32) override;
         virtual void set_cursor(const standard_cursor_graphic aCursor) override;
         virtual void set_icons(const icon_image_collection_type &aIconImages) override;
+        virtual void set_fullscreen(const bool aFullscreen) override;
+        [[nodiscard]] virtual bool fullscreen() const override;
         [[nodiscard]] virtual window_size_type window_size() const override;
         virtual void close() override;
         virtual void keep_open() override;
@@ -54,6 +56,11 @@ namespace gdk::windowing {
         window_pointer_type m_pGLFWWindow;
         cursor_pointer_type m_pGLFWCursor;
         std::string m_Name;
+
+        //! where the window goes back to from fullscreen
+        struct {
+            int x = 0, y = 0, width = 0, height = 0;
+        } m_Windowed;
     };
 }
 
