@@ -8,6 +8,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,43 @@ namespace {
 
         return pWindow;
     }
+
+#ifndef __EMSCRIPTEN__
+    /// \brief the monitor most of the window is on, as glfw says only which it fills
+    [[nodiscard]] GLFWmonitor *monitor_holding(GLFWwindow *const apWindow) {
+        int x = 0, y = 0, width = 0, height = 0;
+
+        glfwGetWindowPos(apWindow, &x, &y);
+        glfwGetWindowSize(apWindow, &width, &height);
+
+        int monitorCount = 0;
+
+        GLFWmonitor **const ppMonitors = glfwGetMonitors(&monitorCount);
+
+        GLFWmonitor *pBest = glfwGetPrimaryMonitor();
+        int mostShared = 0;
+
+        for (int i = 0; i < monitorCount; ++i) {
+            const GLFWvidmode *const pMode = glfwGetVideoMode(ppMonitors[i]);
+
+            if (!pMode) continue;
+
+            int left = 0, top = 0;
+
+            glfwGetMonitorPos(ppMonitors[i], &left, &top);
+
+            const auto sharedWidth = std::min(x + width, left + pMode->width) - std::max(x, left);
+            const auto sharedHeight = std::min(y + height, top + pMode->height) - std::max(y, top);
+
+            if (sharedWidth > 0 && sharedHeight > 0 && sharedWidth * sharedHeight > mostShared) {
+                mostShared = sharedWidth * sharedHeight;
+                pBest = ppMonitors[i];
+            }
+        }
+
+        return pBest;
+    }
+#endif
 }
 
 std::shared_ptr<glfw_window> glfw_window::make(const std::string_view aName,
@@ -131,6 +169,37 @@ void glfw_window::set_icons(const icon_image_collection_type &aIconImages) {
 
     glfwSetWindowIcon(m_pGLFWWindow.get(), static_cast<int>(glfwImages.size()), glfwImages.data());
 }
+
+// emscripten's glfw aborts on glfwSetWindowMonitor, so on the web a window stays as it is
+void glfw_window::set_fullscreen([[maybe_unused]] const bool aFullscreen) {
+#ifndef __EMSCRIPTEN__
+    GLFWwindow *const pWindow = m_pGLFWWindow.get();
+
+    if (aFullscreen == fullscreen()) return;
+
+    if (!aFullscreen) {
+        glfwSetWindowMonitor(pWindow, nullptr, m_Windowed.x, m_Windowed.y, m_Windowed.width, m_Windowed.height,
+            GLFW_DONT_CARE);
+
+        return;
+    }
+
+    GLFWmonitor *const pMonitor = monitor_holding(pWindow);
+    const GLFWvidmode *const pMode = pMonitor ? glfwGetVideoMode(pMonitor) : nullptr;
+
+    if (!pMode) return;
+
+    glfwGetWindowPos(pWindow, &m_Windowed.x, &m_Windowed.y);
+    glfwGetWindowSize(pWindow, &m_Windowed.width, &m_Windowed.height);
+
+    // minimised on losing focus is for a window that took over the display, and this one didn't
+    glfwSetWindowAttrib(pWindow, GLFW_AUTO_ICONIFY, GLFW_FALSE);
+
+    glfwSetWindowMonitor(pWindow, pMonitor, 0, 0, pMode->width, pMode->height, pMode->refreshRate);
+#endif
+}
+
+bool glfw_window::fullscreen() const { return glfwGetWindowMonitor(m_pGLFWWindow.get()) != nullptr; }
 
 void glfw_window::set_cursor(const cursor_image_type &aRGBA32) {
     GLFWimage image;

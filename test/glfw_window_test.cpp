@@ -173,6 +173,55 @@ TEST_CASE("a window's size is its drawing surface's, as the system gave it", "[g
     }
 }
 
+#ifndef __EMSCRIPTEN__
+TEST_CASE("a window fills the display at the display's own mode, and goes back to what it was", "[glfw][fullscreen]")
+{
+    auto pWindow = glfw_window::make("Fullscreen", {320, 240}, vsync_mode::off);
+
+    const auto settle = [&](const window_size_type aSize) {
+        for (int i = 0; i < 200 && pWindow->window_size() != aSize; ++i) {
+            glfw_window::poll_events();
+
+            glfwWaitEventsTimeout(0.01);
+        }
+    };
+
+    const auto windowed = pWindow->window_size();
+
+    GLFWmonitor *const pMonitor = glfwGetPrimaryMonitor();
+
+    REQUIRE(pMonitor);
+
+    const GLFWvidmode before = *glfwGetVideoMode(pMonitor);
+    const window_size_type display{before.width, before.height};
+
+    REQUIRE_FALSE(pWindow->fullscreen());
+
+    pWindow->set_fullscreen(true);
+    settle(display);
+
+    REQUIRE(pWindow->fullscreen());
+    REQUIRE(pWindow->window_size() == display);
+    REQUIRE(glfwGetVideoMode(pMonitor)->refreshRate == before.refreshRate);
+    REQUIRE(glfwGetVideoMode(pMonitor)->width == before.width);
+
+    REQUIRE(glfwGetWindowAttrib(pWindow->ptr_to_implementation().get(), GLFW_AUTO_ICONIFY) == GLFW_FALSE);
+
+    SECTION("asking twice doesn't lose what it goes back to")
+    {
+        pWindow->set_fullscreen(true);
+
+        glfw_window::poll_events();
+    }
+
+    pWindow->set_fullscreen(false);
+    settle(windowed);
+
+    REQUIRE_FALSE(pWindow->fullscreen());
+    REQUIRE(pWindow->window_size() == windowed);
+}
+#endif
+
 TEST_CASE("a handle that outlives its window is safe to keep using", "[glfw][lifetime]")
 {
     glfw_window::window_pointer_type pHandle;
