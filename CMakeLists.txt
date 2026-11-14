@@ -87,6 +87,12 @@ if (EMSCRIPTEN)
     target_link_options(gdkwindowing_glfw PUBLIC "-sUSE_GLFW=3")
 else()
     target_link_libraries(gdkwindowing_glfw PUBLIC glfw)
+
+    target_sources(gdkwindowing_glfw PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/glfw_native.cpp")
+
+    target_compile_definitions(gdkwindowing_glfw PRIVATE
+        "GDK_WINDOWING_GLFW_X11=$<BOOL:${GLFW_BUILD_X11}>"
+        "GDK_WINDOWING_GLFW_WAYLAND=$<BOOL:${GLFW_BUILD_WAYLAND}>")
 endif()
 
 if (GDKWINDOWING_GLFW_INSTALL)

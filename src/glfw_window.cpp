@@ -20,21 +20,27 @@ namespace {
     }
 
     [[nodiscard]] glfw_window::window_pointer_type create_glfw_window(const std::string_view aName,
-        const window_size_type aWindowSize, const vsync_mode aVsync) {
+        const window_size_type aWindowSize, const vsync_mode aVsync, const glfw_window::graphics_api aGraphics) {
         auto pSession = glfw_detail::acquire_session();
 
         const std::string name(aName);
+        const bool opengl = aGraphics == glfw_window::graphics_api::opengl;
 
         glfw_detail::clear_error();
 
+        glfwWindowHint(GLFW_CLIENT_API, opengl ? GLFW_OPENGL_API : GLFW_NO_API);
+
         GLFWwindow *const pRaw = glfwCreateWindow(aWindowSize.first, aWindowSize.second, name.c_str(),
-            nullptr, pSession->share_root());
+            nullptr, opengl ? pSession->share_root() : nullptr);
+
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
 
         if (!pRaw)
-            throw exception(std::string("gdk::windowing::glfw/glfwCreateWindow failed. Can the environment "
-                "provide an OpenGL context? glfw said: ").append(glfw_detail::take_error().value_or("nothing")));
+            throw exception(std::string("gdk::windowing::glfw/glfwCreateWindow failed. Can the environment provide ")
+                .append(opengl ? "an OpenGL context" : "a window").append("? glfw said: ")
+                .append(glfw_detail::take_error().value_or("nothing")));
 
-        pSession->joined(pRaw);
+        if (opengl) pSession->joined(pRaw);
 
         glfw_window::window_pointer_type pWindow(pRaw, [pSession](GLFWwindow *const apWindow) {
             pSession->left(apWindow);
@@ -42,17 +48,19 @@ namespace {
             glfwDestroyWindow(apWindow);
         });
 
-        glfwMakeContextCurrent(pRaw);
+        if (opengl) {
+            glfwMakeContextCurrent(pRaw);
 
-        switch (aVsync) {
-            case vsync_mode::off: glfwSwapInterval(0); break;
-            case vsync_mode::on: glfwSwapInterval(1); break;
+            switch (aVsync) {
+                case vsync_mode::off: glfwSwapInterval(0); break;
+                case vsync_mode::on: glfwSwapInterval(1); break;
 
-            case vsync_mode::adaptive: {
-                glfwSwapInterval(-1);
+                case vsync_mode::adaptive: {
+                    glfwSwapInterval(-1);
 
-                if (glfw_detail::take_error()) glfwSwapInterval(1);
-            } break;
+                    if (glfw_detail::take_error()) glfwSwapInterval(1);
+                } break;
+            }
         }
 
 #ifndef __EMSCRIPTEN__
@@ -103,15 +111,16 @@ namespace {
 }
 
 std::shared_ptr<glfw_window> glfw_window::make(const std::string_view aName,
-    const window_size_type aWindowSize, const vsync_mode aVsync) {
-    return std::shared_ptr<glfw_window>(new glfw_window(aName, aWindowSize, aVsync));
+    const window_size_type aWindowSize, const vsync_mode aVsync, const graphics_api aGraphics) {
+    return std::shared_ptr<glfw_window>(new glfw_window(aName, aWindowSize, aVsync, aGraphics));
 }
 
 glfw_window::glfw_window(const std::string_view aName, const window_size_type aWindowSize,
-    const vsync_mode aVsync)
-: m_pGLFWWindow(create_glfw_window(aName, aWindowSize, aVsync))
+    const vsync_mode aVsync, const graphics_api aGraphics)
+: m_pGLFWWindow(create_glfw_window(aName, aWindowSize, aVsync, aGraphics))
 , m_pGLFWCursor(nullptr, destroy_cursor)
 , m_Name(aName)
+, m_Graphics(aGraphics)
 {}
 
 void glfw_window::poll_events() {
@@ -122,7 +131,11 @@ void glfw_window::poll_events() {
     glfw_detail::throw_error_if_any("poll_events");
 }
 
-void glfw_window::swap_buffers() { glfwSwapBuffers(m_pGLFWWindow.get()); }
+void glfw_window::swap_buffers() {
+    if (m_Graphics == graphics_api::opengl) glfwSwapBuffers(m_pGLFWWindow.get());
+}
+
+glfw_window::graphics_api glfw_window::graphics() const { return m_Graphics; }
 
 glfw_window::window_pointer_type glfw_window::ptr_to_implementation() const { return m_pGLFWWindow; }
 

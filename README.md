@@ -1,5 +1,5 @@
 # gdk-windowing_glfw
-The [gdk-windowing](https://github.com/jfcameron/gdk-windowing) interface, implemented over [GLFW](https://www.glfw.org/): windows with an OpenGL context on Linux (X11 and Wayland), Windows and macOS, and a canvas in the browser through Emscripten.
+The [gdk-windowing](https://github.com/jfcameron/gdk-windowing) interface, implemented over [GLFW](https://www.glfw.org/): windows with an OpenGL context, or with none for a renderer that brings its own, on Linux (X11 and Wayland), Windows and macOS, and a canvas in the browser through Emscripten.
 
 API documentation: https://jfcameron.github.io/gdk-windowing_glfw/
 
@@ -44,5 +44,7 @@ while (!pWindow->should_close()) {
 ```
 
 The window makes its OpenGL context current and loads nothing: a renderer loads its own GL functions (gdk-graphics_webgles initialises GLEW itself). `glfw_window::ptr_to_implementation()` is the `GLFWwindow` that input and the renderer attach to; it may outlive the `glfw_window`.
+
+A renderer that brings its own graphics API, Vulkan or WebGPU say, asks for windows with none: `glfw_context::make(glfw_window::graphics_api::none)`, or `glfw_window::make` with it last. Such a window makes no context, its `swap_buffers` does nothing, and vsync is the renderer's to apply when it presents. `glfw_window::handles()` gives the window as its system knows it, for the renderer to make its surface from: X11's display and window or Wayland's display and surface, whichever glfw runs on, Win32's instance and window, or Cocoa's `NSWindow`. It is not there in the browser.
 
 `window_size()` is the framebuffer's size in pixels, which is what a viewport needs. On a scaled display it is larger than the window's size in screen coordinates.
